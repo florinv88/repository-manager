@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Students Manager</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.5rem; }
+  form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  input { padding: .4rem; flex: 1 1 140px; }
+  button { padding: .4rem .8rem; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #ddd; }
+  #error { color: #b00020; min-height: 1.2rem; margin-bottom: .5rem; }
+</style>
+</head>
+<body>
+<h1>Students Manager</h1>
+<div id="error" role="alert"></div>
+
+<form id="student-form">
+  <input id="name" placeholder="Name" required>
+  <input id="age" type="number" min="1" max="120" placeholder="Age" required>
+  <input id="className" placeholder="Class" required>
+  <button type="submit" id="submit-btn">Add</button>
+  <button type="button" id="cancel-btn" hidden>Cancel</button>
+</form>
+
+<table>
+  <thead><tr><th>Name</th><th>Age</th><th>Class</th><th></th></tr></thead>
+  <tbody id="students"></tbody>
+</table>
+
+<script>
+  const API = '/api/students';
+  const form = document.getElementById('student-form');
+  const nameEl = document.getElementById('name');
+  const ageEl = document.getElementById('age');
+  const classEl = document.getElementById('className');
+  const submitBtn = document.getElementById('submit-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const tbody = document.getElementById('students');
+  const errorEl = document.getElementById('error');
+  let editingId = null;
+
+  async function request(url, options) {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      let msg = 'Request failed (' + res.status + ')';
+      try {
+        const problem = await res.json();
+        msg = problem.detail || problem.title || msg;
+      } catch (e) { /* no body */ }
+      throw new Error(msg);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  function showError(e) { errorEl.textContent = e ? e.message : ''; }
+
+  function cell(text) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  }
+
+  function render(students) {
+    tbody.replaceChildren();
+    for (const s of students) {
+      const tr = document.createElement('tr');
+      tr.append(cell(s.name), cell(s.age), cell(s.className));
+      const actions = document.createElement('td');
+      const edit = document.createElement('button');
+      edit.textContent = 'Edit';
+      edit.onclick = () => startEdit(s);
+      const del = document.createElement('button');
+      del.textContent = 'Delete';
+      del.onclick = () => remove(s.id);
+      actions.append(edit, ' ', del);
+      tr.append(actions);
+      tbody.append(tr);
+    }
+  }
+
+  async function load() {
+    try { render(await request(API)); showError(null); } catch (e) { showError(e); }
+  }
+
+  function startEdit(s) {
+    editingId = s.id;
+    nameEl.value = s.name;
+    ageEl.value = s.age;
+    classEl.value = s.className;
+    submitBtn.textContent = 'Update';
+    cancelBtn.hidden = false;
+  }
+
+  function resetForm() {
+    editingId = null;
+    form.reset();
+    submitBtn.textContent = 'Add';
+    cancelBtn.hidden = true;
+  }
+
+  async function remove(id) {
+    if (!confirm('Delete this student?')) return;
+    try {
+      await request(API + '/' + id, { method: 'DELETE' });
+      if (editingId === id) resetForm();
+      await load();
+    } catch (e) { showError(e); }
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const body = JSON.stringify({
+      name: nameEl.value,
+      age: Number(ageEl.value),
+      className: classEl.value
+    });
+    try {
+      await request(editingId === null ? API : API + '/' + editingId, {
+        method: editingId === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      resetForm();
+      await load();
+    } catch (e) { showError(e); }
+  });
+
+  cancelBtn.addEventListener('click', resetForm);
+  load();
+</script>
+</body>
+</html>
